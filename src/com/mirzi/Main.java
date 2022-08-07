@@ -70,6 +70,7 @@ public class Main {
         }
 
         saveSkinInfo();
+        System.out.println("Scraping finished.");
     }
 
     public static String getDestinationFolder(String filename){
@@ -233,15 +234,15 @@ public class Main {
                         skinDownloadUrl = skinDownloadUrl.split(",")[1];
                         skinDownloadUrl = url + skinDownloadUrl.substring(1, skinDownloadUrl.length() - 1);
 
-                        // get full description
+                        // get description and author
                         String skinDescription = downloadPage.getElementsByTag("p").get(0).text();
+                        String[] skinDateAuthor = downloadPage.select("td[style='width:50%;']").text().split(" by ");
+                        String skinDownloads = downloadPage.select("td[style='text-align:center;width:25%;']").text().split(" ")[0];
 
                         // print skin info
-                        System.out.printf("Name:         %s\nTitle:        %s\nDescription:  %s\nURL:          %s\nDownload URL: %s\n",
+                        System.out.printf("Name:         %s\nAuthor:       %s\nDownload URL: %s\n",
                                 skinName,
-                                skinTitle,
-                                skinDescription,
-                                skinUrl,
+                                skinDateAuthor[0],
                                 skinDownloadUrl);
 
                         // download skin then save info to json array
@@ -252,12 +253,14 @@ public class Main {
                         obj.put("description", skinDescription);
                         obj.put("url", skinUrl);
                         obj.put("downloadurl", skinDownloadUrl);
+                        obj.put("author", skinDateAuthor[1]);
+                        obj.put("date", skinDateAuthor[0]);
+                        obj.put("downloads", skinDownloads);
                         skinJSON.add(obj);
 
                         // download image file
                         String skinImageUrl = downloadPage.select("img[alt][title][src]").get(0).attr("src");
                         downloadImage(url + skinImageUrl, getFileNameFromUrl(skinImageUrl));
-
                     } catch (Exception ex) {
                         System.err.println("Error occurred while downloading skin: " + ex.getMessage());
                     }
