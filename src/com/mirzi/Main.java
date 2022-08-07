@@ -19,7 +19,7 @@ import java.util.Map;
 
 public class Main {
 
-    private final static String VERSION = "0.1";
+    private final static String VERSION = "0.2";
 
     // default values
     private static int requestDelay = 500;
@@ -120,7 +120,7 @@ public class Main {
         URLConnection urlConnection = url.openConnection();
         urlConnection.setConnectTimeout(timeout);
         //urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:103.0) Gecko/20100101 Firefox/103.0");   // this is a surprise tool that will help us later
-        if (!cookie.isEmpty()) urlConnection.setRequestProperty("cookie", cookie);
+        if (cookie != null) urlConnection.setRequestProperty("cookie", cookie);
         ReadableByteChannel rbc = Channels.newChannel(urlConnection.getInputStream());
 
         try {
@@ -135,7 +135,41 @@ public class Main {
             ex.printStackTrace();
         }
 
-        System.out.printf("\rSkin saved to %s\n\n", destination);
+        System.out.printf("\rSkin saved to %s\n", destination);
+    }
+
+    private static void downloadSkin(String urlstr, String filename) throws Exception{
+        downloadSkin(urlstr, filename, null);
+    }
+
+    private static void downloadImage(String urlstr, String filename, String cookie) throws Exception{
+        System.out.printf("Downloading image %s", urlstr);
+        String destination = dest+"images/"+filename;
+
+        URL url = new URL(urlstr);
+        URLConnection urlConnection = url.openConnection();
+        urlConnection.setConnectTimeout(timeout);
+        //urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:103.0) Gecko/20100101 Firefox/103.0");   // this is a surprise tool that will help us later
+        if (cookie != null) urlConnection.setRequestProperty("cookie", cookie);
+        ReadableByteChannel rbc = Channels.newChannel(urlConnection.getInputStream());
+
+        try {
+            File file = new File(destination);
+            file.getParentFile().mkdirs();
+            file.createNewFile();
+            FileOutputStream os = new FileOutputStream(file, false);
+            os.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+            os.close();
+        }catch (Exception ex){
+            System.err.println("Exception caught, your destination may be invalid.");
+            ex.printStackTrace();
+        }
+
+        System.out.printf("\rImage file saved to %s\n\n", destination);
+    }
+
+    private static void downloadImage(String urlstr, String filename) throws Exception{
+        downloadImage(urlstr, filename, null);
     }
 
     private static void scrapeWinampHeritage() throws Exception {
@@ -202,6 +236,7 @@ public class Main {
                         // get full description
                         String skinDescription = downloadPage.getElementsByTag("p").get(0).text();
 
+                        // print skin info
                         System.out.printf("Name:         %s\nTitle:        %s\nDescription:  %s\nURL:          %s\nDownload URL: %s\n",
                                 skinName,
                                 skinTitle,
@@ -209,16 +244,20 @@ public class Main {
                                 skinUrl,
                                 skinDownloadUrl);
 
+                        // download skin then save info to json array
                         downloadSkin(skinDownloadUrl, getFileNameFromUrl(skinDownloadUrl), "downloadsite=winampheritage");
-
                         JSONObject obj = new JSONObject();
                         obj.put("name", skinName);
                         obj.put("title", skinTitle);
                         obj.put("description", skinDescription);
                         obj.put("url", skinUrl);
                         obj.put("downloadurl", skinDownloadUrl);
-
                         skinJSON.add(obj);
+
+                        // download image file
+                        String skinImageUrl = downloadPage.select("img[alt][title][src]").get(0).attr("src");
+                        downloadImage(url + skinImageUrl, getFileNameFromUrl(skinImageUrl));
+
                     } catch (Exception ex) {
                         System.err.println("Error occurred while downloading skin: " + ex.getMessage());
                     }
