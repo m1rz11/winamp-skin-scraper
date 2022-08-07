@@ -148,7 +148,7 @@ public class Main {
 
                 // get page for category
                 System.out.printf("\nCategory: %s, page %d\n\n", destination.getKey(), page);
-                Elements skins = Jsoup.connect(destination.getValue() + "page-" + page).get()
+                Elements skins = Jsoup.connect(destination.getValue() + "/page-" + page).get()
                         .getElementsByAttribute("title");
 
                 // iterate over skins on current page
