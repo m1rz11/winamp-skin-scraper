@@ -1,11 +1,15 @@
 package com.mirzi;
 
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.channels.Channels;
@@ -19,8 +23,11 @@ public class Main {
 
     // default values
     private static int requestDelay = 500;
-    private static int timeout = 15000;
+    private static int timeout = 500;
     private static String dest = "./downloads/";
+
+    // json file where we store scraped skin info
+    private static JSONArray skinJSON;
 
     public static void main(String[] args){
 
@@ -42,16 +49,18 @@ public class Main {
                         break;
                     default:
                         System.err.printf("Invalid argument %s. Use -h for a brief explanation.\n",args[i]);
-                        System.exit(0);
+                        System.exit(1);
                 }
             }
         }catch (Exception e){
             System.err.println("Invalid arguments. Use -h for a brief explanation.");
-            System.exit(0);
+            System.exit(1);
         }
 
         System.out.printf("Winamp skin scraper version %s\nOutput folder: %s\nRequest delay: %s\n", VERSION, dest, requestDelay);
         System.out.println("------------------------------------------------------------------------");
+
+        skinJSON = new JSONArray();
 
         try{
             scrapeWinampHeritage();
@@ -59,6 +68,8 @@ public class Main {
             System.err.println("Exception thrown");
             e.printStackTrace();
         }
+
+        saveSkinInfo();
     }
 
     public static String getDestinationFolder(String filename){
@@ -78,6 +89,19 @@ public class Main {
     public static String getFileNameFromUrl(String url){
         String[] temp = url.split("/");
         return temp[temp.length-1];
+    }
+
+    private static void saveSkinInfo(){
+        try{
+            System.out.println("Saving skin info json file");
+            FileWriter fw = new FileWriter(dest+"skininfo.json");
+            fw.write(skinJSON.toString());
+            fw.flush();
+            fw.close();
+        } catch (Exception e){
+            System.err.println("An error has occurred while writing skin info file.");
+            e.printStackTrace();
+        }
     }
 
     private static void downloadSkin(String urlstr, String filename, String cookie) throws Exception {
@@ -154,40 +178,60 @@ public class Main {
                 // iterate over skins on current page
                 for (Element e : skins) {
                     String skinName = e.text();
-                    String skinDescription = e.attr("title");
-                    String destinationUrl = url + e.attr("href");
+                    String skinTitle = e.attr("title");
+                    String skinUrl = url + e.attr("href");
 
-                    if (skinName.isEmpty() || skinDescription.isEmpty() || destinationUrl.isEmpty())
+                    if (skinName.isEmpty() || skinTitle.isEmpty() || skinUrl.isEmpty())
                         continue;      // ignore this tag if it's not a skin
 
                     pageEmpty = false;
-                    System.out.printf("Name:         %s\nDescription:  %s\nURL:          %s\n", skinName, skinDescription, destinationUrl);
 
                     // parse download page and get download link
                     try {
                         // get onclick attribute
-                        String downloadUrl = Jsoup.connect(destinationUrl).get()
+                        Document downloadPage = Jsoup.connect(skinUrl).get();
+                        String skinDownloadUrl = downloadPage
                                 .getElementsByClass("downloadbutton")
                                 .get(0)
                                 .attr("onclick");
 
                         // cut out the download url
-                        downloadUrl = downloadUrl.split(",")[1];
-                        downloadUrl = url + downloadUrl.substring(1, downloadUrl.length() - 1);
+                        skinDownloadUrl = skinDownloadUrl.split(",")[1];
+                        skinDownloadUrl = url + skinDownloadUrl.substring(1, skinDownloadUrl.length() - 1);
 
-                        System.out.println("Download URL: " + downloadUrl);
+                        // get full description
+                        String skinDescription = downloadPage.getElementsByTag("p").get(0).text();
 
-                        downloadSkin(downloadUrl, getFileNameFromUrl(downloadUrl), "downloadsite=winampheritage");
+                        System.out.printf("Name:         %s\nTitle:        %s\nDescription:  %s\nURL:          %s\nDownload URL: %s\n",
+                                skinName,
+                                skinTitle,
+                                skinDescription,
+                                skinUrl,
+                                skinDownloadUrl);
+
+                        downloadSkin(skinDownloadUrl, getFileNameFromUrl(skinDownloadUrl), "downloadsite=winampheritage");
+
+                        JSONObject obj = new JSONObject();
+                        obj.put("name", skinName);
+                        obj.put("title", skinTitle);
+                        obj.put("description", skinDescription);
+                        obj.put("url", skinUrl);
+                        obj.put("downloadurl", skinDownloadUrl);
+
+                        skinJSON.add(obj);
                     } catch (Exception ex) {
-                        System.err.println("Error occured while downloading skin: " + ex.getMessage());
+                        System.err.println("Error occurred while downloading skin: " + ex.getMessage());
                     }
                 }
 
                 // increment page number for next loop
                 page++;
+                saveSkinInfo();
             }
             System.out.println("Last page reached, jumping to next category");
         }
+
+        System.out.println("Finished scraping "+url);
     }
 
 
