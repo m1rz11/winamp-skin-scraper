@@ -10,21 +10,24 @@ import org.jsoup.select.Elements;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class Main {
 
-    private final static String VERSION = "0.3";
+    private final static String VERSION = "0.4";
     private final static String[] AVAILABLE_TYPES = { "skin", "plugin", "visualization" };
+    private final static String[] AVAILABLE_WEBSITES = { "winampheritage", "wincustomize" };
 
     // default values
     private static int requestDelay = 500;
-    private static int timeout = 500;
+    private static int timeout = 20000;
     private static String dest = "./downloads/";
     private static String type = "skin";
 
@@ -32,12 +35,47 @@ public class Main {
     private static JSONArray skinJSON;
 
     // dirty fix
-    private static String currentCategory, currentSkinType;
+    private static String currentCategory, currentSkinType, websiteToScrape;
 
     public static void main(String[] args){
+        websiteToScrape = null;
 
-        // todo: arguments (website to scrape, category to scrape, page to scrape)
+        // todo: arguments (category to scrape, page to scrape)
         // parse arguments
+        parseArguments(args);
+
+        if (websiteToScrape == null){
+            System.err.println("Website to scrape is not defined. Use -h for a brief explanation.");
+            System.exit(1);
+        }
+
+        System.out.printf("Winamp skin scraper version %s\nWebsite:       %s\nAdd-on type:   %s\nRequest delay: %s\nOutput folder: %s\n", VERSION, websiteToScrape, type, requestDelay, dest);
+        System.out.println("------------------------------------------------------------------------");
+
+        skinJSON = new JSONArray();
+
+        try{
+            // java only allows constants in switch statements which is very cool :-)
+            if (websiteToScrape.equals(AVAILABLE_WEBSITES[0])){
+                scrapeWinampHeritage();
+            } else if (websiteToScrape.equals(AVAILABLE_WEBSITES[1])) {
+                scrapeWinCustomize();
+            }else {
+                // how
+                System.err.println("Have a thumbs up from me for managing to break this program in the most spectacular way.");
+                System.exit(1);
+            }
+
+        } catch (Exception e){
+            System.err.println("Exception thrown");
+            e.printStackTrace();
+        }
+
+        saveSkinInfo();
+        System.out.printf("Scraping %s finished.", websiteToScrape);
+    }
+
+    private static void parseArguments(String[] args){
         try{
             for (int i = 0; i < args.length; i++) {
                 switch (args[i]){
@@ -63,6 +101,17 @@ public class Main {
                         type = args[i+1];
                         i++;
                         break;
+                    case "-w":
+                        for (int j = 0; j < AVAILABLE_WEBSITES.length; j++){
+                            if (AVAILABLE_WEBSITES[j].equals(args[i + 1])) break;
+                            if (j == AVAILABLE_WEBSITES.length - 1){
+                                System.err.printf("Invalid website %s. Use -h for a brief explanation.\n",args[j+1]);
+                                System.exit(1);
+                            }
+                        }
+                        websiteToScrape = args[i+1];
+                        i++;
+                        break;
                     default:
                         System.err.printf("Invalid argument %s. Use -h for a brief explanation.\n",args[i]);
                         System.exit(1);
@@ -72,21 +121,6 @@ public class Main {
             System.err.println("Invalid arguments. Use -h for a brief explanation.");
             System.exit(1);
         }
-
-        System.out.printf("Winamp skin scraper version %s\nOutput folder: %s\nRequest delay: %s\nAdd-on type: %s\n", VERSION, dest, requestDelay, type);
-        System.out.println("------------------------------------------------------------------------");
-
-        skinJSON = new JSONArray();
-
-        try{
-            scrapeWinampHeritage();
-        } catch (Exception e){
-            System.err.println("Exception thrown");
-            e.printStackTrace();
-        }
-
-        saveSkinInfo();
-        System.out.println("Scraping finished.");
     }
 
     public static String getDestinationFolder(String filename){
@@ -95,9 +129,9 @@ public class Main {
 
             if (type.equals("skin")){
                 switch (filetype){
-                    case "wal": currentSkinType = "modern"; return dest+"/"+type+"/modern/";
-                    case "wsz": currentSkinType = "classic"; return dest+"/"+type+"/classic/";
-                    default: currentSkinType = "unknown"; return dest+"/"+type+"/unknown/";
+                    case "wal": currentSkinType = "modern"; return dest+type+"/modern/";
+                    case "wsz": currentSkinType = "classic"; return dest+type+"/classic/";
+                    default: currentSkinType = "unknown"; return dest+type+"/unknown/";
                 }
             }else{
                 return dest+type+"/"+currentCategory+"/";
@@ -116,7 +150,7 @@ public class Main {
     private static void saveSkinInfo(){
         try{
             System.out.println("Saving skin info json file");
-            FileWriter fw = new FileWriter(dest+"fileinfo.json");
+            FileWriter fw = new FileWriter(dest+type+"info.json");
             fw.write(skinJSON.toString());
             fw.flush();
             fw.close();
@@ -139,11 +173,11 @@ public class Main {
 
         // and we're off
         URL url = new URL(urlstr);
-        URLConnection urlConnection = url.openConnection();
-        urlConnection.setConnectTimeout(timeout);
-        //urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:103.0) Gecko/20100101 Firefox/103.0");   // this is a surprise tool that will help us later
-        if (cookie != null) urlConnection.setRequestProperty("cookie", cookie);
-        ReadableByteChannel rbc = Channels.newChannel(urlConnection.getInputStream());
+        URLConnection conn = url.openConnection();
+        conn.setConnectTimeout(timeout);
+        conn.setReadTimeout(timeout);
+        if (cookie != null) conn.setRequestProperty("cookie", cookie);
+        ReadableByteChannel rbc = Channels.newChannel(conn.getInputStream());
 
         try {
             File file = new File(destination);
@@ -164,6 +198,26 @@ public class Main {
         downloadSkin(urlstr, filename, null);
     }
 
+    private static void downloadSkinWithRedirect(String urlstr) throws Exception {
+        URL url = new URL(urlstr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setInstanceFollowRedirects(false);
+
+        conn.setReadTimeout(timeout);
+        conn.setConnectTimeout(timeout);
+
+        if (conn.getResponseCode() == 302){
+            String downloadURL = conn.getHeaderField("Location");
+            if (!downloadURL.startsWith("https:")) downloadURL = "https:" + downloadURL;
+            String[] temp = downloadURL.split("/");
+            System.out.println("Download URL: "+downloadURL);
+            downloadSkin(downloadURL, temp[temp.length-1], conn.getHeaderField("Set-Cookie"));
+        }else {
+            System.err.println("Server responded with code " + conn.getResponseCode());
+        }
+    }
+
     private static void downloadImage(String urlstr, String filename, String cookie) throws Exception{
         System.out.printf("Downloading image %s", urlstr);
         String destination = type.equals("skin")
@@ -171,11 +225,11 @@ public class Main {
                 : dest+"images/"+type+"/"+currentCategory+"/"+filename;
 
         URL url = new URL(urlstr);
-        URLConnection urlConnection = url.openConnection();
-        urlConnection.setConnectTimeout(timeout);
-        //urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:103.0) Gecko/20100101 Firefox/103.0");   // this is a surprise tool that will help us later
-        if (cookie != null) urlConnection.setRequestProperty("cookie", cookie);
-        ReadableByteChannel rbc = Channels.newChannel(urlConnection.getInputStream());
+        URLConnection conn = url.openConnection();
+        conn.setConnectTimeout(timeout);
+        conn.setReadTimeout(timeout);
+        if (cookie != null) conn.setRequestProperty("cookie", cookie);
+        ReadableByteChannel rbc = Channels.newChannel(conn.getInputStream());
 
         try {
             File file = new File(destination);
@@ -203,7 +257,7 @@ public class Main {
         // get categories from main website
         Elements categories = Jsoup.connect(url + "/" + type + "s").get()
                 .getElementsByClass("colorul inlineul")
-                .get(0)
+                .first()
                 .getElementsByTag("a");
 
         // map to store category names and destination urls
@@ -251,7 +305,7 @@ public class Main {
                         Document downloadPage = Jsoup.connect(skinUrl).get();
                         String skinDownloadUrl = downloadPage
                                 .getElementsByClass("downloadbutton")
-                                .get(0)
+                                .first()
                                 .attr("onclick");
 
                         // cut out the download url
@@ -259,7 +313,7 @@ public class Main {
                         skinDownloadUrl = url + skinDownloadUrl.substring(1, skinDownloadUrl.length() - 1);
 
                         // get description and author
-                        String skinDescription = downloadPage.getElementsByTag("p").get(0).text();
+                        String skinDescription = downloadPage.getElementsByTag("p").first().text();
                         String[] skinDateAuthor = downloadPage.select("td[style='width:50%;']").text().split(" by ");
                         String skinDownloads = downloadPage.select("td[style='text-align:center;width:25%;']").text().split(" ")[0];
 
@@ -284,7 +338,7 @@ public class Main {
                         skinJSON.add(obj);
 
                         // download image file
-                        String skinImageUrl = downloadPage.select("img[alt][title][src]").get(0).attr("src");
+                        String skinImageUrl = downloadPage.select("img[alt][title][src]").first().attr("src");
                         downloadImage(url + skinImageUrl, getFileNameFromUrl(skinImageUrl));
 
                     } catch (Exception ex) {
@@ -298,18 +352,99 @@ public class Main {
             }
             System.out.println("Last page reached, jumping to next category");
         }
-
-        System.out.println("Finished scraping "+url);
     }
 
+    private static void scrapeWinCustomize() throws Exception {
+        String url = "https://www.wincustomize.com/explore/winamp";
+        String plainUrl = "https://www.wincustomize.com";
+        System.out.printf("Scraping %s\n\n", url);
 
+        int page = 0;
+        int totalpages = Integer.MAX_VALUE;
+
+        while (page++ < totalpages){
+            // get main webpage
+            Document webpage = Jsoup.connect(url + "/page/" + page).get();
+            totalpages = Integer.parseInt(webpage.getElementsByClass("ptotalpages").first().text());
+            System.out.printf("Page %d of %d.\n", page, totalpages);
+
+            Elements skins = webpage.getElementsByClass("explore_listing");
+            for (Element skin : skins){
+                try{
+                    // get url and webpage
+                    String skinUrl = plainUrl + skin.getElementsByTag("a").first().attr("href");
+                    Document skinPage = Jsoup.connect(skinUrl).get();
+
+                    // id
+                    String[] skinidtemp = skinUrl.split("/");
+                    String skinId = skinidtemp[skinidtemp.length-1];
+
+                    // name
+                    String skinName = skinPage.getElementById("skinname").text();
+
+                    // extract description (i know this part looks like garbage but it works i promise =D)
+                    String skinDescription = "";
+                    try{
+                        Element descriptionEl = skinPage.getElementsByClass("description").first();
+                        skinDescription = descriptionEl.wholeText();
+                        skinDescription.concat(descriptionEl.getElementsByClass("details").first().wholeText());
+                    }catch (Exception e){
+                        // sup
+                    }
+
+                    // extract date and author
+                    Element dateAuthorElement = skinPage.getElementById("skinname").nextElementSibling();
+                    String[] temp = dateAuthorElement.text().split(" by ");
+                    String skinDate = temp[0].substring(8);
+                    String skinAuthor = temp[1];
+
+                    // rating and download count
+                    String skinRating = skinPage.getElementById("averagerating-wrapper-cap").text();
+                    String skinDownloads = skinPage.getElementsByClass("downloadstats").get(1).text();
+
+                    // save to json
+                    JSONObject obj = new JSONObject();
+                    obj.put("id", skinId);
+                    obj.put("name", skinName);
+                    obj.put("description", skinDescription);
+                    obj.put("url", skinUrl);
+                    obj.put("author", skinAuthor);
+                    obj.put("date", skinDate);
+                    obj.put("downloads", skinDownloads);
+                    obj.put("rating", skinRating);
+                    skinJSON.add(obj);
+
+                    // print info
+                    System.out.printf("Name:         %s (%s)\nAuthor:       %s\n",
+                            skinName,
+                            skinId,
+                            skinAuthor);
+
+                    // download the skin
+                    downloadSkinWithRedirect(plainUrl + skinPage.select("a[title='Download']").attr("href"));
+
+                    // download image
+                    Element imageEl = skinPage.select("a[style='float:left;padding:0 10px 10px 0']").first();
+                    String imgUrl = "http:" + imageEl.attr("href");
+                    String[] imgtemp = imgUrl.split("/");
+                    downloadImage(imgUrl, imgtemp[imgtemp.length-1]);
+                }catch (Exception e){
+                    System.err.println("Exception thrown, continuing.");
+                    e.printStackTrace();
+                }
+            }
+            saveSkinInfo();
+        }
+    }
 
     private static void printHelp(){
         System.out.println(
                 "-o output         Change output folder where skins will be saved\n" +
                 "-d delay          Adjust delay between requests\n"+
-                "-t type           Type of add-on to download. Currently works with winampheritage.com.\n"+
-                "                  [plugin, skin, visualization]"
+                "-t type           Type of add-on to download. Works only with -w winampheritage.\n"+
+                "                  "+Arrays.toString(AVAILABLE_TYPES)+"\n"+
+                "-w website        Website to scrape\n"+
+                "                  "+Arrays.toString(AVAILABLE_WEBSITES)+"\n"
         );
     }
 }
