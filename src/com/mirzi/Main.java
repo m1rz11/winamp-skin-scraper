@@ -27,7 +27,7 @@ public class Main {
 
     // default values
     private static int requestDelay = 500;
-    private static int timeout = 20000;
+    private static int timeout = 500;
     private static String dest = "./downloads/";
     private static String type = "skin";
 
