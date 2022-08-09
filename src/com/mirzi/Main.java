@@ -19,15 +19,20 @@ import java.util.Map;
 
 public class Main {
 
-    private final static String VERSION = "0.2";
+    private final static String VERSION = "0.3";
+    private final static String[] AVAILABLE_TYPES = { "skin", "plugin", "visualization" };
 
     // default values
     private static int requestDelay = 500;
     private static int timeout = 500;
     private static String dest = "./downloads/";
+    private static String type = "skin";
 
     // json file where we store scraped skin info
     private static JSONArray skinJSON;
+
+    // dirty fix
+    private static String currentCategory, currentSkinType;
 
     public static void main(String[] args){
 
@@ -47,6 +52,17 @@ public class Main {
                         requestDelay = Integer.parseInt(args[i+1]);
                         i++;
                         break;
+                    case "-t":
+                        for (int j = 0; j < AVAILABLE_TYPES.length; j++){
+                            if (AVAILABLE_TYPES[j].equals(args[i + 1])) break;
+                            if (j == AVAILABLE_TYPES.length - 1){
+                                System.err.printf("Invalid type %s. Use -h for a brief explanation.\n",args[j+1]);
+                                System.exit(1);
+                            }
+                        }
+                        type = args[i+1];
+                        i++;
+                        break;
                     default:
                         System.err.printf("Invalid argument %s. Use -h for a brief explanation.\n",args[i]);
                         System.exit(1);
@@ -57,7 +73,7 @@ public class Main {
             System.exit(1);
         }
 
-        System.out.printf("Winamp skin scraper version %s\nOutput folder: %s\nRequest delay: %s\n", VERSION, dest, requestDelay);
+        System.out.printf("Winamp skin scraper version %s\nOutput folder: %s\nRequest delay: %s\nAdd-on type: %s\n", VERSION, dest, requestDelay, type);
         System.out.println("------------------------------------------------------------------------");
 
         skinJSON = new JSONArray();
@@ -76,10 +92,15 @@ public class Main {
     public static String getDestinationFolder(String filename){
         try{
             String filetype = filename.substring(filename.length()-3);
-            switch (filetype){
-                case "wal": return dest+"modern/";
-                case "wsz": return dest+"classic/";
-                default: return dest+"unknown/";
+
+            if (type.equals("skin")){
+                switch (filetype){
+                    case "wal": currentSkinType = "modern"; return dest+"/"+type+"/modern/";
+                    case "wsz": currentSkinType = "classic"; return dest+"/"+type+"/classic/";
+                    default: currentSkinType = "unknown"; return dest+"/"+type+"/unknown/";
+                }
+            }else{
+                return dest+type+"/"+currentCategory+"/";
             }
         }catch (Exception e){
             // i have no idea how could one cause this to throw an exception but let's keep it anyway
@@ -95,7 +116,7 @@ public class Main {
     private static void saveSkinInfo(){
         try{
             System.out.println("Saving skin info json file");
-            FileWriter fw = new FileWriter(dest+"skininfo.json");
+            FileWriter fw = new FileWriter(dest+"fileinfo.json");
             fw.write(skinJSON.toString());
             fw.flush();
             fw.close();
@@ -145,7 +166,9 @@ public class Main {
 
     private static void downloadImage(String urlstr, String filename, String cookie) throws Exception{
         System.out.printf("Downloading image %s", urlstr);
-        String destination = dest+"images/"+filename;
+        String destination = type.equals("skin")
+                ? dest+"images/"+type+"/"+currentSkinType+"/"+filename
+                : dest+"images/"+type+"/"+currentCategory+"/"+filename;
 
         URL url = new URL(urlstr);
         URLConnection urlConnection = url.openConnection();
@@ -178,7 +201,7 @@ public class Main {
         System.out.printf("Scraping %s\n\n", url);
 
         // get categories from main website
-        Elements categories = Jsoup.connect(url + "/skins").get()
+        Elements categories = Jsoup.connect(url + "/" + type + "s").get()
                 .getElementsByClass("colorul inlineul")
                 .get(0)
                 .getElementsByTag("a");
@@ -199,6 +222,7 @@ public class Main {
 
         // iterate over categories
         for (Map.Entry<String,String> destination : destinations.entrySet()){
+            currentCategory = destination.getKey();
             boolean pageEmpty = false;
             int page = 0;
 
@@ -242,7 +266,7 @@ public class Main {
                         // print skin info
                         System.out.printf("Name:         %s\nAuthor:       %s\nDownload URL: %s\n",
                                 skinName,
-                                skinDateAuthor[0],
+                                skinDateAuthor[1],
                                 skinDownloadUrl);
 
                         // download skin then save info to json array
@@ -256,11 +280,13 @@ public class Main {
                         obj.put("author", skinDateAuthor[1]);
                         obj.put("date", skinDateAuthor[0]);
                         obj.put("downloads", skinDownloads);
+                        obj.put("category", destination.getKey());
                         skinJSON.add(obj);
 
                         // download image file
                         String skinImageUrl = downloadPage.select("img[alt][title][src]").get(0).attr("src");
                         downloadImage(url + skinImageUrl, getFileNameFromUrl(skinImageUrl));
+
                     } catch (Exception ex) {
                         System.err.println("Error occurred while downloading skin: " + ex.getMessage());
                     }
@@ -281,6 +307,9 @@ public class Main {
     private static void printHelp(){
         System.out.println(
                 "-o output         Change output folder where skins will be saved\n" +
-                "-d delay          Adjust delay between requests");
+                "-d delay          Adjust delay between requests\n"+
+                "-t type           Type of add-on to download. Currently works with winampheritage.com.\n"+
+                "                  [plugin, skin, visualization]"
+        );
     }
 }
