@@ -355,7 +355,8 @@ public class Main {
                         downloadImage(url + skinImageUrl, getFileNameFromUrl(skinImageUrl));
 
                     } catch (Exception ex) {
-                        System.err.println("Error occurred while downloading skin: " + ex.getMessage());
+                        System.err.println("\nError occurred while downloading skin.");
+                        ex.printStackTrace();
                     }
                 }
 
@@ -444,7 +445,7 @@ public class Main {
                     String[] imgtemp = imgUrl.split("/");
                     downloadImage(imgUrl, imgtemp[imgtemp.length-1]);
                 }catch (Exception e){
-                    System.err.println("\nException thrown, continuing.");
+                    System.err.println("\nError occurred while downloading skin.");
                     e.printStackTrace();
                 }
             }
@@ -523,7 +524,8 @@ public class Main {
                         downloadSkin(skinDownloadUrl, getFileNameFromUrl(skinDownloadUrl));
                         downloadImage(skinImageUrl, skinImgName);
                     } catch (Exception ex) {
-                        System.err.println("Error occurred while downloading skin: " + ex.getMessage());
+                        System.err.println("\nError occurred while downloading skin.");
+                        ex.printStackTrace();
                     }
                 }
 
